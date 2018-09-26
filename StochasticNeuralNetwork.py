@@ -3,7 +3,7 @@ import theano.tensor as tt
 import numpy as np
 import theano
 
-class RandomWalkModel:
+class StochasticNeuralNetwork:
 
     def __init__(self, num_layers, num_nodes, interval, learn_trends=True):
         self.num_layers = num_layers

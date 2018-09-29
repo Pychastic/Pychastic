@@ -5,85 +5,132 @@ import theano
 
 class StochasticNeuralNetwork:
 
-    def __init__(self, num_layers, num_nodes, interval, learn_trends=True):
+    def __init__(self, num_layers, num_nodes, interval, output='normal', inference_method='advi', learn_trends=False):
         self.num_layers = num_layers
         self.num_nodes = num_nodes
         self.interval = interval
+        self.output = output
+        self.inference_method = inference_method
         self.learn_trends = learn_trends # determines whether we generate the data using the
                                          # learned random walk weights, or if we assume mu=0.
+        self.weight_sd = 10.                # TODO: parameterize this somehow
+        self.bias_sd = 10.                  # TODO: parameterize this somehow
+        self.activation_fn = pm.math.tanh   # TODO: parameterize this somehow
 
+    def _build_model(self, X, Y):
         #cutoff_idx = 1000
         #y_obs = np.ma.MaskedArray(Y, np.arange(N) > cutoff_idx)
 
-        X = np.reshape([0.0], [1000, 1]) # TODO: does the user need to predefine the shape of X and Y?
-        Y = np.reshape([0.0], [1000, 1])
+        self.ann_input = theano.shared(X)
+        self.ann_output = theano.shared(Y)
 
-        ann_input = theano.shared(X)
-        ann_output = theano.shared(Y)
+        layer_inits = []
+        for layer in range(self.num_layers):
+            n_in = self.num_nodes
+            if layer == 0:
+                n_in = X.shape[1]
 
-        #n_hidden = [2, 5]
-        #interval = 20
+            layer_inits.append(np.random.randn(n_in, self.num_nodes).astype(theano.config.floatX))
 
-        init_1 = np.random.randn(X.shape[1], self.num_nodes).astype(theano.config.floatX)
-        # init_2 = np.random.randn(n_hidden[0], n_hidden[1]).astype(theano.config.floatX)
-        # init_out = np.random.randn(n_hidden[1]).astype(theano.config.floatX)
+        init_out = np.random.randn(self.num_nodes).astype(theano.config.floatX)
 
         with pm.Model() as self.model:
-            self.step_sizes = []
-            self.weights_reps = []
+            self.weights = []
 
-            for layer in self.num_layers:
+            step_size = pm.HalfNormal('step_size', sd=np.ones(self.num_nodes) * self.weight_sd, shape=self.num_nodes)
 
-                step_size = pm.HalfNormal('step_size_%s' % layer, sd=np.ones(self.num_nodes),
-                                          shape=self.num_nodes)
+            for layer in range(self.num_layers):
+                # TODO: need to add biases?
+                if layer == 0:  # only the first layer will be GaussianRandomWalks
+                    weights_intervals = pm.GaussianRandomWalk('w%s' % layer,
+                                                    sd=step_size,
+                                                    shape=(self.interval, X.shape[1], self.num_nodes),
+                                                    testval=np.tile(layer_inits[layer], (self.interval, 1, 1))
+                                                    )
 
-                weights = pm.GaussianRandomWalk('w%s' % layer, sd=step_size,
-                                                 shape=(interval, X.shape[1], self.num_nodes),
-                                                 testval=np.tile(init_1, (interval, 1, 1))
-                                                 )
+                    weights = tt.repeat(weights_intervals, self.ann_input.shape[0] // self.interval, axis=0)
+                else:
+                    weights_intervals = pm.Normal('w%s' % layer,
+                                          mu=0,
+                                          sd=self.weight_sd,
+                                          shape=(1, self.num_nodes, self.num_nodes),
+                                          testval=layer_inits[layer])
 
-                weights_rep = tt.repeat(weights,
-                                        ann_input.shape[0] // interval, axis=0)
+                    weights = tt.repeat(weights_intervals, self.ann_input.shape[0], axis=0)
 
-                self.step_sizes.append(step_size)
-                self.weights_reps.append(weights_rep)
+                self.weights.append(weights)
 
-            # TODO: mathematical question: does the compounding of random walk variables
-            # result in quickly un-inferrable models? (exponential noisiness making it
-            # impossible to infer the values themselves)
-            weights_1_2 = pm.Normal('w2', mu=0, sd=1.,
-                                    shape=(1, n_hidden[0], n_hidden[1]),
-                                    testval=init_2)
-
-            weights_1_2_rep = tt.repeat(weights_1_2,
-                                        ann_input.shape[0], axis=0)
-
-            weights_2_out = pm.Normal('w3', mu=0, sd=1.,
-                                      shape=(1, n_hidden[1]),
+            # TODO: support multidimensional Y output
+            weights_out = pm.Normal('w_out', mu=0, sd=self.weight_sd,
+                                      shape=(1, self.num_nodes),
                                       testval=init_out)
 
-            weights_2_out_rep = tt.repeat(weights_2_out,
-                                          ann_input.shape[0], axis=0)
+            weights_out_rep = tt.repeat(weights_out,
+                                        self.ann_input.shape[0], axis=0)
 
-            # Build neural-network using tanh activation function
-            act_1 = tt.tanh(tt.batched_dot(ann_input,
-                                           weights_in_1_rep))
-            act_2 = tt.tanh(tt.batched_dot(act_1,
-                                           weights_1_2_rep))
-            act_out = tt.nnet.sigmoid(tt.batched_dot(act_2,
-                                                     weights_2_out_rep))
+            # Now assemble the neural network
+            self.layers = []
+            for layer in range(self.num_layers):
+                input = self.ann_input
+                if layer > 0:
+                    input = self.layers[layer - 1]
 
-            # Binary classification -> Bernoulli likelihood
-            self.out = pm.Bernoulli('out',
-                                    act_out,
-                                    observed=ann_output)
+                batched_dot_product = tt.batched_dot(input, self.weights[layer])
+                self.layers.append(self.activation_fn(batched_dot_product))# + self.biases[layer]))
 
-    def fit(self, X, Y):
+            if self.output == 'normal':
+                layer_out = tt.batched_dot(self.layers[-1], weights_out_rep)
+                bias_out = pm.Normal('bias_out', mu=0.0, sd=self.bias_sd)
+
+                # Regression -> Gaussian likelihood
+                pm.Normal('y', mu=layer_out + bias_out, sd=0.1, observed=self.ann_output)
+            elif self.output == 'bernoulli':
+                layer_out = pm.math.sigmoid(tt.batched_dot(self.layers[-1], weights_out_rep))
+                bias_out = pm.Normal('bias_out', mu=0.0, sd=self.bias_sd)
+
+                # Binary classification -> Bernoulli likelihood
+                pm.Bernoulli('y', layer_out + bias_out, observed=self.ann_output)
+            else:
+                raise Exception("Unknown output parameter value: %s. Choose among 'normal', 'bernoulli'." % self.output)
+
+    def fit(self, X, Y, samples=500, advi_n=50000, advi_n_mc=1, advi_obj_optimizer=pm.adam(learning_rate=.1)):
+
+        self.num_samples = samples
+
+        self._build_model(X, Y)
 
         with self.model:
-            self.trace = pm.sample(1000, tune=200)
+            if self.inference_method == 'advi':
+                mean_field = pm.fit(n=advi_n,
+                                    method='advi',
+                                    obj_n_mc=advi_n_mc,
+                                    obj_optimizer=advi_obj_optimizer)       # TODO: how to determine hyperparameters?
 
-    def generate(self, X, time_steps=1, samples=500):
+                self.trace = mean_field.sample(draws=samples)
+            elif self.inference_method == 'mcmc':
+                self.trace = pm.sample(samples, tune=samples)
+            else:
+                raise Exception("Unknown output parameter value: %s. Choose among 'normal', 'bernoulli'." % self.output)
 
-    def evaluate(self, X, Y):
+    def predict(self, X):
 
+        # for each of the num_samples parameter values sampled above, sample 500 times the expected y value.
+        S = 100
+        samples = pm.sample_ppc(self.trace, model=self.model, size=S)
+        y_preds = samples['y']
+        print "y_preds shape = ", y_preds.shape
+
+        # get the average, since we're interested in plotting the expectation.
+        y_preds = np.mean(y_preds, axis=1)
+        y_preds = np.mean(y_preds, axis=0)
+
+        return y_preds
+
+    #def generate(self, X, time_steps=1, samples=500):
+
+    def RMSD(self, X, Y):
+        y_preds = self.predict(X)
+
+        deviations = y_preds - Y
+
+        return np.sqrt(np.mean(deviations ** 2.0))

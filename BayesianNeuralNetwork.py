@@ -10,8 +10,8 @@ class BayesianNeuralNetwork:
         self.num_nodes = num_nodes
         self.output = output
         self.inference_method = inference_method
-        self.weight_sd = 1.                 # TODO: parameterize this somehow
-        self.bias_sd = 1.                   # TODO: parameterize this somehow
+        self.weight_sd = 10.                # TODO: parameterize this somehow
+        self.bias_sd = 10.                  # TODO: parameterize this somehow
         self.activation_fn = pm.math.tanh   # TODO: parameterize this somehow
 
     def _build_model(self, X, Y):

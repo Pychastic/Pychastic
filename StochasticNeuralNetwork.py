@@ -85,11 +85,10 @@ class StochasticNeuralNetwork:
                 # Regression -> Gaussian likelihood
                 pm.Normal('y', mu=layer_out + bias_out, sd=0.1, observed=self.ann_output)
             elif self.output == 'bernoulli':
-                layer_out = pm.math.sigmoid(tt.batched_dot(self.layers[-1], weights_out_rep))
-                bias_out = pm.Normal('bias_out', mu=0.0, sd=self.bias_sd)
+                layer_out = tt.nnet.sigmoid(tt.batched_dot(self.layers[-1], weights_out_rep))
 
                 # Binary classification -> Bernoulli likelihood
-                pm.Bernoulli('y', layer_out + bias_out, observed=self.ann_output)
+                pm.Bernoulli('y', layer_out, observed=self.ann_output)
             else:
                 raise Exception("Unknown output parameter value: %s. Choose among 'normal', 'bernoulli'." % self.output)
 
@@ -118,7 +117,6 @@ class StochasticNeuralNetwork:
         S = 100
         samples = pm.sample_ppc(self.trace, model=self.model, size=S)
         y_preds = samples['y']
-        print "y_preds shape = ", y_preds.shape
 
         # get the average, since we're interested in plotting the expectation.
         y_preds = np.mean(y_preds, axis=1)

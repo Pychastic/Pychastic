@@ -46,7 +46,7 @@ plt.show()
 
 np.random.seed(123)
 
-nn = SNN.StochasticNeuralNetwork(2, 2, 20, output='bernoulli', inference_method='mcmc')
+nn = SNN.StochasticNeuralNetwork([2, 2], 20, output='bernoulli', inference_method='mcmc')
 nn.fit(X, Y, samples=500)
 y_preds = nn.predict(X)
 

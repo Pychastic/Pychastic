@@ -27,7 +27,7 @@ plt.show()
 # 2. neural network
 print "Building neural network..."
 
-nn = SNN.StochasticNeuralNetwork(2, 3, 20)
+nn = SNN.StochasticNeuralNetwork([3, 3], 20)
 nn.fit(X, Y, samples=1000, advi_n=20000)
 y_preds = nn.predict(X)
 RMSD = nn.RMSD(X, Y)

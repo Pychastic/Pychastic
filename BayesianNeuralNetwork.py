@@ -5,9 +5,8 @@ import matplotlib.pyplot as plt
 
 class BayesianNeuralNetwork:
 
-    def __init__(self, num_layers, num_nodes, output='normal', inference_method='advi'):
-        self.num_layers = num_layers
-        self.num_nodes = num_nodes
+    def __init__(self, nodes_per_layer, output='normal', inference_method='advi'):
+        self.nodes_per_layer = nodes_per_layer
         self.output = output
         self.inference_method = inference_method
         self.weight_sd = 10.                # TODO: parameterize this somehow
@@ -19,43 +18,45 @@ class BayesianNeuralNetwork:
         self.ann_output = theano.shared(Y)
 
         layer_inits = []
-        for layer in range(self.num_layers):
-            n_in = self.num_nodes
+        for layer in range(len(self.nodes_per_layer)):
             if layer == 0:
                 n_in = X.shape[1]
+            else:
+                n_in = self.nodes_per_layer[layer - 1]
 
-            layer_inits.append(np.random.randn(n_in, self.num_nodes).astype(theano.config.floatX))
+            layer_inits.append(np.random.randn(n_in, self.nodes_per_layer[layer]).astype(theano.config.floatX))
 
-        init_out = np.random.randn(self.num_nodes, Y.shape[1]).astype(theano.config.floatX)
+        init_out = np.random.randn(self.nodes_per_layer[-1], Y.shape[1]).astype(theano.config.floatX)
 
         with pm.Model() as self.model:
             self.weights = []
             self.biases = []
 
-            for layer in range(self.num_layers):
-                first_dim = self.num_nodes
+            for layer in range(len(self.nodes_per_layer)):
                 if layer == 0:
                     first_dim = X.shape[1]
+                else:
+                    first_dim = self.nodes_per_layer[layer-1]
 
                 self.biases.append(pm.Normal('bias%s' % layer, mu=0.0, sd=self.bias_sd))
                 self.weights.append(pm.Normal('layer%s' % layer,
                                               mu=0,
                                               sd=self.weight_sd,
-                                              shape=(first_dim, self.num_nodes),
+                                              shape=(first_dim, self.nodes_per_layer[layer]),
                                               testval=layer_inits[layer]))
 
             # output layer
             weights_out = pm.Normal('out',
                                     mu=0,
                                     sd=self.weight_sd,
-                                    shape=(self.num_nodes, Y.shape[1]),
+                                    shape=(self.nodes_per_layer[-1], Y.shape[1]),
                                     testval=init_out)
 
             self.num_outputs = Y.shape[1]
 
             # Build neural-network using tanh activation function
             self.layers = []
-            for layer in range(self.num_layers):
+            for layer in range(len(self.nodes_per_layer)):
                 input = self.ann_input
                 if layer > 0:
                     input = self.layers[layer - 1]

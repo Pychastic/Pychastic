@@ -20,8 +20,10 @@ class StochasticNeuralNetwork:
         #cutoff_idx = 1000
         #y_obs = np.ma.MaskedArray(Y, np.arange(N) > cutoff_idx)
 
-        self.ann_input = theano.shared(X)
-        self.ann_output = theano.shared(Y)
+        # Round up the number of data points to be used based on the interval parameter.
+        actual_N = (X.shape[0] // self.interval) * self.interval
+        self.ann_input = theano.shared(X[:actual_N])
+        self.ann_output = theano.shared(Y[:actual_N])
 
         layer_inits = []
         for layer in range(len(self.nodes_per_layer)):
@@ -50,7 +52,9 @@ class StochasticNeuralNetwork:
                                                     testval=np.tile(layer_inits[layer], (self.interval, 1, 1))
                                                     )
 
-                    weights = tt.repeat(weights_intervals, self.ann_input.shape[0] // self.interval, axis=0)
+                    weights = tt.repeat(weights_intervals,
+                                        (self.ann_input.shape[0] // self.interval),
+                                        axis=0)
                 else:
                     weights_intervals = pm.Normal('w%s' % layer,
                                           mu=0,
@@ -58,7 +62,9 @@ class StochasticNeuralNetwork:
                                           shape=(1, self.nodes_per_layer[layer-1], self.nodes_per_layer[layer]),
                                           testval=layer_inits[layer])
 
-                    weights = tt.repeat(weights_intervals, self.ann_input.shape[0], axis=0)
+                    weights = tt.repeat(weights_intervals,
+                                        actual_N,
+                                        axis=0)
 
                 self.weights.append(weights)
 
@@ -68,7 +74,7 @@ class StochasticNeuralNetwork:
                                     testval=init_out)
 
             weights_out_rep = tt.repeat(weights_out,
-                                        self.ann_input.shape[0], axis=0)
+                                        actual_N, axis=0)
 
             # Now assemble the neural network
             self.layers = []

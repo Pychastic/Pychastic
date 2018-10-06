@@ -10,7 +10,7 @@ sys.path.append("..")
 
 import StochasticNeuralNetwork as SNN
 
-X, Y = make_moons(noise=0.2, random_state=0, n_samples=5000)
+X, Y = make_moons(noise=0.2, random_state=0, n_samples=4798)
 X = scale(X)
 
 colors = Y.astype(str)
@@ -46,8 +46,8 @@ plt.show()
 
 np.random.seed(123)
 
-nn = SNN.StochasticNeuralNetwork([2, 2], 20, output='bernoulli', inference_method='mcmc')
-nn.fit(X, Y, samples=500)
+nn = SNN.StochasticNeuralNetwork([2, 2], 20, output='bernoulli')
+nn.fit(X, Y, samples=500, advi_n=10000)
 y_preds = nn.predict(X)
 
 print "X shape = ", X.shape
@@ -60,6 +60,8 @@ fig, axarr = plt.subplots(1, 5, sharey=True, sharex=True)
 for i in range(len(axarr)):
     from_idx = 1000 * i
     to_idx = 1000 * (i + 1)
+    if to_idx > y_preds.shape[0]:
+        to_idx = y_preds.shape[0]
 
     blue_points_y = []
     red_points_y = []
@@ -81,10 +83,10 @@ for i in range(len(axarr)):
     blue_points_pred = np.array(blue_points_pred)
     red_points_pred = np.array(red_points_pred)
 
-    axarr[i].scatter(blue_points_y[:, 0], blue_points_y[:, 1])
-    axarr[i].scatter(red_points_y[:, 0], red_points_y[:, 1])
+    axarr[i].scatter(blue_points_y[:, 0], blue_points_y[:, 1], color='blue')
+    axarr[i].scatter(red_points_y[:, 0], red_points_y[:, 1], color='red')
     axarr[i].scatter(blue_points_pred[:, 0], blue_points_pred[:, 1], color='purple', alpha=0.1)
-    axarr[i].scatter(red_points_pred[:, 0], red_points_pred[:, 1], color='yellow', alpha=0.2)
+    axarr[i].scatter(red_points_pred[:, 0], red_points_pred[:, 1], color='yellow', alpha=0.1)
 
     axarr[i].set_title("t range %s to %s" % (from_idx, to_idx))
 

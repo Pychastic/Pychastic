@@ -100,7 +100,7 @@ class BayesianNeuralNetwork:
 
     def predict(self, X):
         self.ann_input.set_value(X)
-        self.ann_output.set_value(X) # TODO: for some reason I need to set this with something of the same length as Y (and possibly same dimensionality??)
+        self.ann_output.set_value(X)
 
         S = 100
         preds = pm.sample_ppc(self.trace, model=self.model, size=S)
@@ -113,8 +113,16 @@ class BayesianNeuralNetwork:
 
         return np.reshape(y_preds, [-1, self.num_outputs])
 
-    # TODO: implement this: similar to predict, but don't take the expectation of the output, allow the full uncertainty/variation
-    #def generate(self, samples=500):
+    def generate(self, X, samples=500):
+
+        self.ann_input.set_value(X)
+        self.ann_output.set_value(X)
+
+        preds = pm.sample_ppc(self.trace, samples=samples, model=self.model)
+
+        y_preds = np.reshape(preds['y'], [samples, -1])
+
+        return y_preds
 
     def RMSD(self, X, Y):
         y_preds = self.predict(X)

@@ -1,7 +1,6 @@
 import pymc3 as pm
 import numpy as np
 import theano
-import matplotlib.pyplot as plt
 
 class BayesianNeuralNetwork:
 

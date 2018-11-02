@@ -134,7 +134,7 @@ class MDHAssetModel:
             if component == 0:
                 y = np.random.standard_t(self.estimated_nu) * np.exp(current_volatility)
                 for l in range(self.num_lags):
-                    y += self.estimated_rhos[l] * generated[-self.num_lags + l]
+                    y += self.estimated_rhos[l] * generated[-(l+1)]
             else:
                 y = np.random.normal(0., float(1e-100))
 
